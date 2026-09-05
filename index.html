@@ -145,6 +145,55 @@
   }
   input[type="number"]::-webkit-inner-spin-button{ opacity: 0.5; }
 
+  select{
+    width: 100%;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 10px;
+    border-radius: 5px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  select:focus{ outline: none; border-color: var(--copper); }
+
+  /* Tabs / views */
+  .tabs{
+    display: flex;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+  .tab-btn{
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 10px 18px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .tab-btn:hover{ color: var(--text); }
+  .tab-btn.active{
+    background: var(--copper-soft);
+    border-color: var(--copper);
+    color: var(--text);
+  }
+  .view{ display: none; }
+  .view.active{ display: block; }
+
+  .field-hint{
+    color: var(--copper);
+    font-size: 12.5px;
+    margin-top: 6px;
+    cursor: pointer;
+    display: inline-block;
+  }
+  .field-hint:hover{ text-decoration: underline; }
+
   .check-row{
     display: flex;
     align-items: center;
@@ -322,6 +371,13 @@
     <p>Preencha os dados de uma peça, veja o lucro na hora e salve no histórico para acompanhar tudo ao longo do tempo.</p>
   </header>
 
+  <div class="tabs">
+    <button class="tab-btn active" id="tabCalc" data-view="viewCalc">Calculadora</button>
+    <button class="tab-btn" id="tabClientes" data-view="viewClientes">Clientes</button>
+  </div>
+
+  <div class="view active" id="viewCalc">
+
   <section class="stats" id="stats">
     <div class="stat faturado">
       <div class="valor num" id="statFaturado">R$ 0,00</div>
@@ -349,6 +405,14 @@
       <div class="field">
         <label for="fName">Nome da peça</label>
         <input type="text" id="fName" placeholder="Ex: Suporte de celular">
+      </div>
+
+      <div class="field">
+        <label for="fCliente">Cliente (opcional)</label>
+        <select id="fCliente">
+          <option value="">Sem cliente</option>
+        </select>
+        <div class="field-hint" id="linkNovoCliente">+ cadastrar novo cliente</div>
       </div>
 
       <div class="field-row">
@@ -458,6 +522,35 @@
     <div id="jobList"></div>
   </section>
 
+  </div>
+
+  <div class="view" id="viewClientes">
+  <section class="panel history">
+    <h2>Clientes</h2>
+    <p class="sub" id="clientesSub">Nenhum cliente cadastrado ainda.</p>
+
+    <div class="field-row" style="margin-bottom:16px;">
+      <div class="field" style="margin-bottom:0;">
+        <label for="cName">Nome do cliente</label>
+        <input type="text" id="cName" placeholder="Ex: Maria Silva">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label for="cContato">Telefone / WhatsApp (opcional)</label>
+        <input type="text" id="cContato" placeholder="Ex: (11) 99999-0000">
+      </div>
+    </div>
+    <button class="btn" id="btnAddCliente" style="margin-bottom:22px;">Adicionar cliente</button>
+
+    <div class="head-row" id="clientesHeadRow">
+      <span>Cliente</span>
+      <span>Peças</span>
+      <span>Faturado</span>
+      <span>Lucro</span>
+      <span></span>
+    </div>
+    <div id="clienteList"></div>
+  </section>
+
 </div>
 
 <script>
@@ -489,7 +582,8 @@
       kwh: $('fKwh').value || 0,
       extra: $('fExtra').value || 0,
       preco: $('fPreco').value || 0,
-      falhou: $('fFalhou').checked
+      falhou: $('fFalhou').checked,
+      clienteId: $('fCliente').value || null
     };
   }
 
@@ -558,7 +652,7 @@
       row.innerHTML = `
         <div>
           <div class="job-name">${escapeHtml(j.nome)}</div>
-          <div class="job-date">${dateStr}${j.falhou ? ' · falhou' : ''}</div>
+          <div class="job-date">${dateStr}${j.falhou ? ' · falhou' : ''}${j.clienteId ? ' · ' + escapeHtml(clienteNome(j.clienteId)) : ''}</div>
         </div>
         <div class="job-val"><span class="col-label">Custo</span>${fmt(j.custoTotal)}</div>
         <div class="job-val"><span class="col-label">Venda</span>${fmt(j.preco)}</div>
@@ -604,6 +698,112 @@
     jobs = jobs.filter(j => j.id !== id);
     renderJobs();
     saveJobs();
+    renderClientes();
+  }
+
+  // ---------- Clientes ----------
+  const CLIENTS_KEY = "impressora3d:clientes";
+  let clientes = [];
+
+  function loadClientes(){
+    try{
+      const raw = localStorage.getItem(CLIENTS_KEY);
+      clientes = raw ? JSON.parse(raw) : [];
+    }catch(e){
+      console.error('Não foi possível ler os clientes salvos.', e);
+      clientes = [];
+    }
+    renderClienteSelect();
+  }
+
+  function saveClientes(){
+    try{
+      localStorage.setItem(CLIENTS_KEY, JSON.stringify(clientes));
+    }catch(e){
+      console.error('Não foi possível salvar os clientes.', e);
+    }
+  }
+
+  function clienteNome(id){
+    if (!id) return null;
+    const c = clientes.find(c => c.id === id);
+    return c ? c.nome : 'Cliente removido';
+  }
+
+  function renderClienteSelect(){
+    const sel = $('fCliente');
+    const atual = sel.value;
+    sel.innerHTML = '<option value="">Sem cliente</option>' +
+      clientes.map(c => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+    sel.value = clientes.some(c => c.id === atual) ? atual : '';
+  }
+
+  function handleAddCliente(){
+    const nome = $('cName').value.trim();
+    if (!nome){ $('cName').focus(); return; }
+    const contato = $('cContato').value.trim();
+    clientes.push({
+      id: 'cli_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
+      nome,
+      contato,
+      criadoEm: Date.now()
+    });
+    saveClientes();
+    $('cName').value = '';
+    $('cContato').value = '';
+    renderClienteSelect();
+    renderClientes();
+    $('cName').focus();
+  }
+
+  function deleteCliente(id){
+    clientes = clientes.filter(c => c.id !== id);
+    saveClientes();
+    renderClienteSelect();
+    renderClientes();
+    renderJobs();
+  }
+
+  function renderClientes(){
+    const list = $('clienteList');
+    const sub = $('clientesSub');
+    const headRow = $('clientesHeadRow');
+    list.innerHTML = '';
+
+    if (clientes.length === 0){
+      sub.textContent = 'Nenhum cliente cadastrado ainda.';
+      headRow.style.display = 'none';
+      list.innerHTML = '<div class="empty-state">Cadastre seu primeiro cliente para vincular às peças do histórico.</div>';
+      return;
+    }
+
+    headRow.style.display = '';
+    sub.textContent = `${clientes.length} cliente${clientes.length > 1 ? 's' : ''} cadastrado${clientes.length > 1 ? 's' : ''}.`;
+
+    clientes.forEach((c) => {
+      const cJobs = jobs.filter(j => j.clienteId === c.id);
+      const faturado = cJobs.reduce((s,j) => s + j.preco, 0);
+      const custo = cJobs.reduce((s,j) => s + j.custoTotal, 0);
+      const lucro = faturado - custo;
+
+      const row = document.createElement('div');
+      row.className = 'job-row';
+      row.innerHTML = `
+        <div>
+          <div class="job-name">${escapeHtml(c.nome)}</div>
+          <div class="job-date">${c.contato ? escapeHtml(c.contato) : 'Sem contato cadastrado'}</div>
+        </div>
+        <div class="job-val"><span class="col-label">Peças</span>${cJobs.length}</div>
+        <div class="job-val"><span class="col-label">Faturado</span>${fmt(faturado)}</div>
+        <div class="job-val ${lucro >= 0 ? 'pos' : 'neg'}"><span class="col-label">Lucro</span>${fmt(lucro)}</div>
+        <button class="del" title="Excluir" data-id="${c.id}">✕</button>
+      `;
+      list.appendChild(row);
+    });
+
+    list.querySelectorAll('.del').forEach(btn => {
+      btn.addEventListener('click', () => deleteCliente(btn.dataset.id));
+    });
   }
 
   function handleSalvar(){
@@ -613,6 +813,7 @@
       id: 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
       nome: data.nome,
       falhou: data.falhou,
+      clienteId: data.clienteId,
       filamentoCusto: r.filamentoCusto,
       energiaCusto: r.energiaCusto,
       extraCusto: r.extraCusto,
@@ -625,6 +826,7 @@
     jobs.push(job);
     renderJobs();
     saveJobs();
+    renderClientes();
 
     // reset only the name and checkbox; keep cost inputs since they tend to repeat
     $('fName').value = '';
@@ -640,9 +842,24 @@
     .forEach(el => el.addEventListener('input', updateLive));
 
   $('btnSalvar').addEventListener('click', handleSalvar);
+  $('btnAddCliente').addEventListener('click', handleAddCliente);
+
+  function showView(viewId){
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === viewId));
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.toggle('active', t.dataset.view === viewId));
+  }
+  $('tabCalc').addEventListener('click', () => showView('viewCalc'));
+  $('tabClientes').addEventListener('click', () => showView('viewClientes'));
+  $('linkNovoCliente').addEventListener('click', () => {
+    showView('viewClientes');
+    $('cName').focus();
+  });
 
   updateLive();
+  loadClientes();
   loadJobs();
+  renderClientes();
 </script>
 </body>
 </html>
+atualização: aba de clientes
